@@ -16,10 +16,14 @@ namespace CalculateModelClasses
     
         public Point Origin;
         public SpectVector RayVector;
-        public RayInfo(Point one, SpectVector vector)
+        public double mint;
+        public double maxt;
+        public RayInfo(Point one, SpectVector vector, double mint = 0.000001, double maxt = Double.PositiveInfinity)
         {
             Origin = one;
             RayVector = vector;
+            this.mint = mint;
+            this.maxt = maxt;
         }
         public RayInfo(Point one, Point two)
         {

@@ -5,14 +5,14 @@ using System.Text;
 
 namespace CalculateModelClasses
 {
-    public struct KDNode
+    public class KDNode
     {
         public List<Triangle> primitives;//包含三角面
         public KDNode left;//左子节点
         public KDNode right;//右子节点
         public Bounds3 box;//包围盒
         public double splitPlane;//分割面
-        public short flag;//区分基于x,y,z轴划分的内部节点（对应0,1,2）以及叶节点（对应3）
+        public int flag;//区分基于x,y,z轴划分的内部节点（对应0,1,2）以及叶节点（对应3）
 
         public void InitLeaf(List<Triangle> triangles)
         {
@@ -22,7 +22,17 @@ namespace CalculateModelClasses
         public void InitInterior(int axis, int aboveChild, float splitPlane)
         {
             this.splitPlane = splitPlane;
-            this.flag = (short)axis;
+            this.flag = axis;
+        }
+
+        public bool IsLeaf()
+        {
+            return flag == 3 ? true : false;
+        }
+
+        public int SplitAxis()
+        {
+            return flag;
         }
     }
 
@@ -34,7 +44,7 @@ namespace CalculateModelClasses
         public double t;
         public int primNum;
         public enum EdgeType { Start, End };
-        public EdgeType type = EdgeType.Start;
+        public EdgeType type;
         public BoundEdge(double t, int primNum, bool starting)
         {
             this.t = t;
@@ -48,6 +58,14 @@ namespace CalculateModelClasses
             else
                 return e1.t < e2.t;
         }
+
+        public static bool operator >(BoundEdge e1, BoundEdge e2)
+        {
+            if (e1.t == e2.t)
+                return (int)e1.type > (int)e2.type;
+            else
+                return e1.t > e2.t;
+        }
     }
 
     public class KDTreeAccelerator
@@ -55,7 +73,7 @@ namespace CalculateModelClasses
         private int isectCost, traversalCost, maxPrims;
         private double emptyBonus;
         private List<Triangle> primitives = new List<Triangle>();
-        private List<KDNode> nodes;
+        private List<KDNode> nodes = new List<KDNode>();
         private int nAllocedNodes, nextFreeNode;//记录已分配的节点数量 和 数组中下一个有效节点
         private Bounds3 bounds;
 
@@ -268,6 +286,153 @@ namespace CalculateModelClasses
             }
             //待补充 本文件数据结构与参考书不同
         }
+
+        private bool Intersect(RayInfo ray)
+        {
+            // Compute initial parametric range of ray inside kd-tree extent
+            double tmin = 0.000001;
+            double tmax = Double.PositiveInfinity;
+            if (!bounds.IntersectP(ray, ref tmin, ref tmax))
+                return false;
+
+            // Prepare to traverse kd-tree for ray
+            SpectVector invDir = new SpectVector(1.0 / ray.RayVector.a, 1.0 / ray.RayVector.b, 1.0 / ray.RayVector.c);
+            List<KdToDo> todo = new List<KdToDo>();
+            int todoPos = 0;
+
+            // Traverse kd-tree nodes in order for ray
+            bool hit = false;
+            KDNode node = nodes[0];
+            while (node != null)
+            {
+                // Bail out if we found a hit closer than the current node
+                if (ray.maxt < tmin) break;
+                if (!node.IsLeaf())
+                {
+                    // Process kd-tree interior node
+
+                    // Compute parametric distance along ray to split plane
+                    int axis = node.SplitAxis();
+                    switch (axis)
+                    {
+                        case 0:
+                            {
+                                double tplane = (node.splitPlane - ray.Origin.X) * invDir.a;
+                                // Get node children pointers for ray 根据光线穿越包围盒的先后情况决定处理子节点的顺序
+                                KDNode firstChild = new KDNode();
+                                KDNode secondChild = new KDNode();
+                                bool isBelowFirst = (ray.Origin.X < node.splitPlane) ||
+                                    (ray.Origin.X == node.splitPlane && ray.RayVector.a <= 0);
+                                if (isBelowFirst)
+                                {
+                                    //firstChild = node + 1;
+                                    //secondChild = &nodes[node->AboveChild()];
+                                }
+                                else
+                                {
+                                    //firstChild = &nodes[node->AboveChild()];
+                                    //secondChild = node + 1;
+                                }
+                                // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
+                                if (tplane > tmax || tplane <= 0)
+                                    node = firstChild;
+                                else if (tplane < tmin)
+                                    node = secondChild;
+                                else
+                                {
+                                    // Enqueue _secondChild_ in todo list
+                                    todo[todoPos].node = secondChild;
+                                    todo[todoPos].tmin = tplane;
+                                    todo[todoPos].tmax = tmax;
+                                    ++todoPos;
+                                    node = firstChild;
+                                    tmax = tplane;
+                                }
+                            } break;
+                        case 1:
+                            {
+                                double tplane = (node.splitPlane - ray.Origin.Y) * invDir.b;
+                                // Get node children pointers for ray 根据光线穿越包围盒的先后情况决定处理子节点的顺序
+                                KDNode firstChild = new KDNode();
+                                KDNode secondChild = new KDNode();
+                                bool isBelowFirst = (ray.Origin.Y < node.splitPlane) ||
+                                    (ray.Origin.Y == node.splitPlane && ray.RayVector.b <= 0);
+                                if (isBelowFirst)
+                                {
+                                    //firstChild = node + 1;
+                                    //secondChild = &nodes[node->AboveChild()];
+                                }
+                                else
+                                {
+                                    //firstChild = &nodes[node->AboveChild()];
+                                    //secondChild = node + 1;
+                                }
+                                // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
+                                if (tplane > tmax || tplane <= 0)
+                                    node = firstChild;
+                                else if (tplane < tmin)
+                                    node = secondChild;
+                                else
+                                {
+                                    // Enqueue _secondChild_ in todo list
+                                    todo[todoPos].node = secondChild;
+                                    todo[todoPos].tmin = tplane;
+                                    todo[todoPos].tmax = tmax;
+                                    ++todoPos;
+                                    node = firstChild;
+                                    tmax = tplane;
+                                }
+                            } break;
+                        case 2:
+                            {
+                                double tplane = (node.splitPlane - ray.Origin.Z) * invDir.c;
+                                // Get node children pointers for ray 根据光线穿越包围盒的先后情况决定处理子节点的顺序
+                                KDNode firstChild = new KDNode();
+                                KDNode secondChild = new KDNode();
+                                bool isBelowFirst = (ray.Origin.Z < node.splitPlane) ||
+                                    (ray.Origin.Z == node.splitPlane && ray.RayVector.c <= 0);
+                                if (isBelowFirst)
+                                {
+                                    //firstChild = node + 1;
+                                    //secondChild = &nodes[node->AboveChild()];
+                                }
+                                else
+                                {
+                                    //firstChild = &nodes[node->AboveChild()];
+                                    //secondChild = node + 1;
+                                }
+                                // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
+                                if (tplane > tmax || tplane <= 0)
+                                    node = firstChild;
+                                else if (tplane < tmin)
+                                    node = secondChild;
+                                else
+                                {
+                                    // Enqueue _secondChild_ in todo list
+                                    todo[todoPos].node = secondChild;
+                                    todo[todoPos].tmin = tplane;
+                                    todo[todoPos].tmax = tmax;
+                                    ++todoPos;
+                                    node = firstChild;
+                                    tmax = tplane;
+                                }
+                            } break;
+                        default: throw new Exception { };
+                    }
+                }
+                else
+                {
+                    // Check for intersections inside leaf node
+                    int nPrimitives = node.primitives.Count;
+                    if (nPrimitives == 1)
+                    { 
+                        
+                    }
+                }
+            }
+        }
+
+
     }
 
     public class Bounds3
@@ -276,7 +441,14 @@ namespace CalculateModelClasses
         public Point pMax=new Point();
 
         public Bounds3()
-        { }
+        {
+            this.pMin.X = Double.NegativeInfinity;
+            this.pMin.Y = Double.NegativeInfinity;
+            this.pMin.Z = Double.NegativeInfinity;
+            this.pMax.X = Double.PositiveInfinity;
+            this.pMax.Y = Double.PositiveInfinity;
+            this.pMax.Z = Double.PositiveInfinity;
+        }
         /// <summary>
         /// 给出空间的两个点，创造包围盒
         /// </summary>
@@ -354,6 +526,78 @@ namespace CalculateModelClasses
             else
                 return 2;
         }
+
+        public bool IntersectP(RayInfo ray, ref double hitt0, ref double hitt1)
+        {
+            double t0 = 0.000001;
+            double t1 = Double.PositiveInfinity;
+            for (int i = 0; i < 3; i++)
+            {
+                // Update interval for _i_th bounding box slab 更新三组包围盒平行板间距
+                switch (i)
+                {
+                    case 0:
+                        {
+                            double invDir = 1.0 / ray.RayVector.a;
+                            double tNear = (pMin.X - ray.Origin.X) * invDir;
+                            double tFar = (pMax.X - ray.Origin.X) * invDir;
+                            // Update parametric interval from slab intersection $t$s
+                            if (tNear > tFar)
+                            {
+                                double temp = tNear;
+                                tNear = tFar;
+                                tFar = temp;
+                            }
+                            t0 = tNear > t0 ? tNear : t0;
+                            t1 = tFar < t1 ? tFar : t1;
+                            if (t0 > t1) return false;
+                        }break;
+                    case 1:
+                        {
+                            double invDir = 1.0 / ray.RayVector.b;
+                            double tNear = (pMin.Y - ray.Origin.Y) * invDir;
+                            double tFar = (pMax.Y - ray.Origin.Y) * invDir;
+                            // Update parametric interval from slab intersection $t$s
+                            if (tNear > tFar)
+                            {
+                                double temp = tNear;
+                                tNear = tFar;
+                                tFar = temp;
+                            }
+                            t0 = tNear > t0 ? tNear : t0;
+                            t1 = tFar < t1 ? tFar : t1;
+                            if (t0 > t1) return false;
+                        }break;
+                    case 2:
+                        {
+                            double invDir = 1.0 / ray.RayVector.c;
+                            double tNear = (pMin.Z - ray.Origin.Z) * invDir;
+                            double tFar = (pMax.Z - ray.Origin.Z) * invDir;
+                            // Update parametric interval from slab intersection $t$s
+                            if (tNear > tFar)
+                            {
+                                double temp = tNear;
+                                tNear = tFar;
+                                tFar = temp;
+                            }
+                            t0 = tNear > t0 ? tNear : t0;
+                            t1 = tFar < t1 ? tFar : t1;
+                            if (t0 > t1) return false;
+                        }break;
+                    default:
+                        throw new Exception { };                     
+                }                
+            }
+            if (hitt0 != Double.NaN) hitt0 = t0;
+            if (hitt1 != Double.NaN) hitt1 = t1;
+            return true;
+        }
+    }
+
+    public class KdToDo
+    {
+        public KDNode node = new KDNode();
+        public double tmin, tmax;
     }
 
     

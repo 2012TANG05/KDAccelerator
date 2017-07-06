@@ -8,18 +8,23 @@ namespace CalculateModelClasses
     public class KDNode
     {
         public List<Triangle> primitives;//包含三角面
-        public KDNode left;//左子节点
-        public KDNode right;//右子节点
+        //public KDNode left;//左子节点
+        //public KDNode right;//右子节点
         public Bounds3 box;//包围盒
         public double splitPlane;//分割面
         public int flag;//区分基于x,y,z轴划分的内部节点（对应0,1,2）以及叶节点（对应3）
+        public List<int> primitiveNumbers = new List<int>();
 
-        public void InitLeaf(List<Triangle> triangles)
+        public void InitLeaf(int[] primNums, int np)
         {
-            primitives = new List<Triangle>(triangles);//传值传引用可能会出问题，mark
+            for (int i = 0; i < np; i++)
+            {
+                primitiveNumbers.Add(primNums[i]);//深拷贝
+            }
+            this.flag = 3;
         }
 
-        public void InitInterior(int axis, int aboveChild, float splitPlane)
+        public void InitInterior(int axis, int aboveChild, double splitPlane)
         {
             this.splitPlane = splitPlane;
             this.flag = axis;
@@ -74,8 +79,9 @@ namespace CalculateModelClasses
         private double emptyBonus;
         private List<Triangle> primitives = new List<Triangle>();
         private List<KDNode> nodes = new List<KDNode>();
-        private int nAllocedNodes, nextFreeNode;//记录已分配的节点数量 和 数组中下一个有效节点
+        private int nextFreeNode;//记录数组中下一个有效节点
         private Bounds3 bounds;
+        private int maxDepth;
 
         public KDTreeAccelerator(List<Triangle> primitives, int isectCost = 80, int traversalCost = 1, 
             double emptyBonus = 0.5, int maxPrims = 1, int maxDepth = -1)
@@ -85,9 +91,10 @@ namespace CalculateModelClasses
             this.maxPrims = maxPrims;
             this.emptyBonus = emptyBonus;
             this.primitives = primitives;
+            this.maxDepth = maxDepth;
 
             //Build kd-Tree for accelerator
-            nextFreeNode = nAllocedNodes = 0;
+            nextFreeNode = 0;
             if (maxDepth <= 0)
                 maxDepth = (int)Math.Round(8 + 1.3 * (Math.Log(primitives.Count) / Math.Log(2)),0);
 
@@ -116,16 +123,17 @@ namespace CalculateModelClasses
             
         }
 
-        private void BuildTree(int nodeNum, ref Bounds3 nodeBounds, ref List<Bounds3> allPrimBounds, 
-            int[] primNums, List<Triangle> tris, int depth, List<List<BoundEdge>> edges, 
+        private void BuildTree(int nodeNum, Bounds3 nodeBounds, List<Bounds3> allPrimBounds, 
+            int[] primNums, int nPrimitives, int depth, List<List<BoundEdge>> edges, 
             int[] prims0, int[] prims1, int badRefines)
         {
             // Get next free node from _nodes_ array
+            nextFreeNode++;
 
             // Initialize leaf node if termination criteria met
-            if (tris.Count <= maxPrims || depth == 0)
+            if (nPrimitives <= maxPrims || depth == 0)
             {
-                nodes[nodeNum].InitLeaf(tris);
+                nodes[nodeNum].InitLeaf(primNums, nPrimitives);
                 return;
             }
 
@@ -134,7 +142,7 @@ namespace CalculateModelClasses
             // Choose split axis position for interior node 为内部节点选择分割轴位置
             int bestAxis = -1, bestOffset = -1;
             double bestCost = Double.PositiveInfinity;
-            double oldCost = isectCost*(double)(tris.Count);//与所有面判交成本
+            double oldCost = isectCost*(double)(nPrimitives);//与所有面判交成本
             double totalSA = nodeBounds.SurfaceArea();//当前包围盒表面积
             double invTotalSA = 1.0 / totalSA;
             SpectVector d = new SpectVector(nodeBounds.pMin, nodeBounds.pMax);
@@ -144,7 +152,7 @@ namespace CalculateModelClasses
         retrySplit:
             // Initialize edges for _axis_
             List<BoundEdge> bes = new List<BoundEdge>();
-            for (int i = 0; i < tris.Count; i++)
+            for (int i = 0; i < nPrimitives; i++)
             {
                 int pn = primNums[i];
                 Bounds3 bbox = allPrimBounds[pn];
@@ -173,15 +181,15 @@ namespace CalculateModelClasses
                     throw new Exception { };
             }
             bes.Sort();//对包围盒在轴线的投影进行排序
-            for (int i = 0; i < tris.Count; i++)
+            for (int i = 0; i < nPrimitives; i++)
             {
                 edges[axis][2 * i] = bes[i];
                 edges[axis][2 * i + 1] = bes[2 * i + 1];
             }
 
             // Compute cost of all splits for _axis_ to find best
-            int nBelow = 0, nAbove = tris.Count;
-            for (int i = 0; i < 2 * tris.Count; i++)
+            int nBelow = 0, nAbove = nPrimitives;
+            for (int i = 0; i < 2 * nPrimitives; i++)
             {
                 if (edges[axis][i].type == BoundEdge.EdgeType.End) --nAbove;
                 double edget = edges[axis][i].t;
@@ -252,7 +260,7 @@ namespace CalculateModelClasses
                 }
                 if (edges[axis][i].type == BoundEdge.EdgeType.Start) ++nBelow;
             }
-            if (!(nBelow == tris.Count && nAbove == 0))
+            if (!(nBelow == nPrimitives && nAbove == 0))
                 throw new Exception { };
             // Create leaf if no good splits were found 如果分割面不理想，创建叶节点
             if (bestAxis == -1 && retries < 2)
@@ -262,29 +270,32 @@ namespace CalculateModelClasses
                 goto retrySplit;
             }
             if (bestCost > oldCost) ++badRefines;
-            if ((bestCost > 4.0 * oldCost && tris.Count < 16) || bestAxis == -1 || badRefines == 3)
-            { nodes[nodeNum].InitLeaf(tris); return; }
+            if ((bestCost > 4.0 * oldCost && nPrimitives < 16) || bestAxis == -1 || badRefines == 3)
+            { nodes[nodeNum].InitLeaf(primNums, nPrimitives); return; }
 
             // Classify primitives with respect to split 根据分割面，将分割面两侧的三角面编号存入两个数组
             int n0 = 0, n1 = 0;
             for (int i = 0; i < bestOffset; ++i)
                 if (edges[bestAxis][i].type == BoundEdge.EdgeType.Start)
                     prims0[n0++] = edges[bestAxis][i].primNum;
-            for (int i = bestOffset + 1; i < 2 * tris.Count; ++i)
+            for (int i = bestOffset + 1; i < 2 * nPrimitives; ++i)
                 if (edges[bestAxis][i].type == BoundEdge.EdgeType.End)
-                    prims0[n1++] = edges[bestAxis][i].primNum;
+                    prims1[nPrimitives*(this.maxDepth-depth)+(n1++)] = edges[bestAxis][i].primNum;
 
             // Recursively initialize children nodes 递归创建子节点
             double tsplit = edges[bestAxis][bestOffset].t;
-            Bounds3 bounds0 = nodeBounds, bound1 = nodeBounds;
+            Bounds3 bounds0 = nodeBounds, bounds1 = nodeBounds;
             switch (axis)
             {
-                case 0: bounds0.pMax.X = bound1.pMin.X = tsplit; break;
-                case 1: bounds0.pMax.Y = bound1.pMin.Y = tsplit; break;
-                case 2: bounds0.pMax.Z = bound1.pMin.Z = tsplit; break;
+                case 0: bounds0.pMax.X = bounds1.pMin.X = tsplit; break;
+                case 1: bounds0.pMax.Y = bounds1.pMin.Y = tsplit; break;
+                case 2: bounds0.pMax.Z = bounds1.pMin.Z = tsplit; break;
                 default: throw new Exception { };
             }
             //待补充 本文件数据结构与参考书不同
+            BuildTree(nodeNum + 1, bounds0, allPrimBounds, prims0, n0, depth - 1, edges, prims0, prims1, badRefines);
+            nodes[nodeNum].InitInterior(bestAxis, nextFreeNode, tsplit);//中序建树
+            BuildTree(nodeNum + 1, bounds1, allPrimBounds, prims1, n1, depth - 1, edges, prims0, prims1, badRefines);
         }
 
         private bool Intersect(RayInfo ray)

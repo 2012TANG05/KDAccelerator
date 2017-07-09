@@ -7,24 +7,37 @@ namespace CalculateModelClasses
 {
     public class KDNode
     {
-        public List<Triangle> triangles;//包含三角面
         public KDNode left;//左子节点
         public KDNode right;//右子节点
         public Bounds3 box;//包围盒
-        public double splitPlane;//分割面
+        public double splitPlane;//分割面坐标
         public int flag;//区分基于x,y,z轴划分的内部节点（对应0,1,2）以及叶节点（对应3）
-        public List<int> primitiveNumbers = new List<int>();
+        public List<int> primitiveNumbers = new List<int>();//包含的三角面的对应编号
 
+        public KDNode()
+        {
+            this.splitPlane = Double.NaN;
+            this.flag = -1;
+        }
+        /// <summary>
+        /// 建立叶节点
+        /// </summary>
+        /// <param name="primNums">该节点包含的三角面编号</param>
+        /// <param name="np">该节点包含的三角面个数</param>
         public void InitLeaf(int[] primNums, int np)
         {
             for (int i = 0; i < np; i++)
             {
                 primitiveNumbers.Add(primNums[i]);//深拷贝
             }
-            this.flag = 3;
+            this.flag = 3;//叶节点对应的标志位编号
         }
-
-        public void InitInterior(int axis, int aboveChild, double splitPlane)
+        /// <summary>
+        /// 建立内部节点
+        /// </summary>
+        /// <param name="axis">分割轴（0，1，2对应X，Y，Z轴）</param>
+        /// <param name="splitPlane">分割面坐标</param>
+        public void InitInterior(int axis, double splitPlane)
         {
             this.splitPlane = splitPlane;
             this.flag = axis;
@@ -33,11 +46,6 @@ namespace CalculateModelClasses
         public bool IsLeaf()
         {
             return flag == 3 ? true : false;
-        }
-
-        public int SplitAxis()
-        {
-            return flag;
         }
     }
 
@@ -78,11 +86,18 @@ namespace CalculateModelClasses
         private int isectCost, traversalCost, maxPrims;
         private double emptyBonus;
         private List<Triangle> primitives = new List<Triangle>();
-        private List<KDNode> nodes = new List<KDNode>();
-        private int nextFreeNode;//记录数组中下一个有效节点
-        private Bounds3 bounds;
+        public KDNode rootNode = new KDNode();//记录根节点
+        private Bounds3 bounds;//整个场景的大包围盒
         private int maxDepth;
-
+        /// <summary>
+        /// 构造KDTree加速器
+        /// </summary>
+        /// <param name="primitives">三角面</param>
+        /// <param name="isectCost">判交成本</param>
+        /// <param name="traversalCost">遍历成本</param>
+        /// <param name="emptyBonus">两区域其一为空时，附加值参数，介于0到1之间</param>
+        /// <param name="maxPrims">单个节点允许的最大三角面数量</param>
+        /// <param name="maxDepth">允许的最大树深度</param>
         public KDTreeAccelerator(List<Triangle> primitives, int isectCost = 80, int traversalCost = 1, 
             double emptyBonus = 0.5, int maxPrims = 1, int maxDepth = -1)
         {
@@ -94,11 +109,10 @@ namespace CalculateModelClasses
             this.maxDepth = maxDepth;
 
             //Build kd-Tree for accelerator
-            nextFreeNode = 0;
             if (maxDepth <= 0)
                 maxDepth = (int)Math.Round(8 + 1.3 * (Math.Log(primitives.Count) / Math.Log(2)),0);
 
-            //Compute bounds for kd-tree construction
+            //Compute bounds for kd-tree construction 计算根节点的包围盒
             List<Bounds3> primBounds = new List<Bounds3>();
             for (int i = 0; i < primitives.Count; i++)
             {
@@ -107,35 +121,39 @@ namespace CalculateModelClasses
                 primBounds.Add(tempBound);
             }
 
-            // Allocate working memory for kd-tree construction C#中这一步已简化
-            List<List<BoundEdge>> edges = new List<List<BoundEdge>>();
-            int[] prims0 = new int[primitives.Count];
-            int[] prims1 = new int[(maxDepth+1)*primitives.Count];
-
-            // Initialize _primNums_ for kd-tree construction
+            // Initialize _primNums_ for kd-tree construction 初始化面元编号数组
             int[] primNums = new int[primitives.Count];
             for (int i = 0; i < primitives.Count; i++)
             {
                 primNums[i] = i;
             }
 
-            // Start recursive construction of kd-tree
-            
+            // Start recursive construction of kd-tree 开始递归建树
+            BuildTree(rootNode, bounds, primBounds, primNums, primitives.Count, maxDepth, 0);
         }
-
-        private void BuildTree(int nodeNum, Bounds3 nodeBounds, List<Bounds3> allPrimBounds, 
-            int[] primNums, int nPrimitives, int depth, List<List<BoundEdge>> edges, 
-            int[] prims0, int[] prims1, int badRefines)
+        /// <summary>
+        /// 创建节点
+        /// </summary>
+        /// <param name="currentNode">当前节点</param>
+        /// <param name="nodeBounds">当前节点的包围盒</param>
+        /// <param name="allPrimBounds">所有面元的包围盒</param>
+        /// <param name="primNums">当前节点所包含的面元编号数组</param>
+        /// <param name="nPrimitives">当前节点所包含的面元数量</param>
+        /// <param name="depth">当前节点深度</param>
+        /// <param name="badRefines">到当前节点为止的非优划分次数</param>
+        private void BuildTree(KDNode currentNode, Bounds3 nodeBounds, List<Bounds3> allPrimBounds, 
+            int[] primNums, int nPrimitives, int depth, int badRefines)
         {
-            // Get next free node from _nodes_ array
-            nextFreeNode++;
-
             // Initialize leaf node if termination criteria met
             if (nPrimitives <= maxPrims || depth == 0)
             {
-                nodes[nodeNum].InitLeaf(primNums, nPrimitives);
+                currentNode.InitLeaf(primNums, nPrimitives);
                 return;
             }
+            // Allocate working memory for kd-tree construction C#中这一步已简化
+            List<List<BoundEdge>> edges = new List<List<BoundEdge>>();
+            int[] prims0 = new int[primitives.Count];
+            int[] prims1 = new int[primitives.Count];
 
         // Initialize interior node and continue recursion 初始化内部节点并递归创建
 
@@ -146,7 +164,7 @@ namespace CalculateModelClasses
             double totalSA = nodeBounds.SurfaceArea();//当前包围盒表面积
             double invTotalSA = 1.0 / totalSA;
             SpectVector d = new SpectVector(nodeBounds.pMin, nodeBounds.pMax);
-            // Choose which axis to split along
+            // Choose which axis to split along 选择最长的坐标轴作为分割轴
             int axis = nodeBounds.MaximumExtent();
             int retries = 0;
         retrySplit:
@@ -263,7 +281,7 @@ namespace CalculateModelClasses
             if (!(nBelow == nPrimitives && nAbove == 0))
                 throw new Exception { };
             // Create leaf if no good splits were found 如果分割面不理想，创建叶节点
-            if (bestAxis == -1 && retries < 2)
+            if (bestAxis == -1 && retries < 2)//当前轴划分不理想，则换一条轴重新划分
             {
                 ++retries;
                 axis = (axis + 1) % 3;
@@ -271,7 +289,7 @@ namespace CalculateModelClasses
             }
             if (bestCost > oldCost) ++badRefines;
             if ((bestCost > 4.0 * oldCost && nPrimitives < 16) || bestAxis == -1 || badRefines == 3)
-            { nodes[nodeNum].InitLeaf(primNums, nPrimitives); return; }
+            { currentNode.InitLeaf(primNums, nPrimitives); return; }
 
             // Classify primitives with respect to split 根据分割面，将分割面两侧的三角面编号存入两个数组
             int n0 = 0, n1 = 0;
@@ -292,15 +310,23 @@ namespace CalculateModelClasses
                 case 2: bounds0.pMax.Z = bounds1.pMin.Z = tsplit; break;
                 default: throw new Exception { };
             }
-            //待补充 本文件数据结构与参考书不同
-            BuildTree(nodeNum + 1, bounds0, allPrimBounds, prims0, n0, depth - 1, edges, prims0, prims1, badRefines);
-            nodes[nodeNum].InitInterior(bestAxis, nextFreeNode, tsplit);//中序建树
-            BuildTree(nodeNum + 1, bounds1, allPrimBounds, prims1, n1, depth - 1, edges, prims0, prims1, badRefines);
+            //递归创建子节点
+            KDNode leftChild = new KDNode();
+            currentNode.left = leftChild;//浅拷贝
+            KDNode rightChild = new KDNode();
+            currentNode.right = rightChild;//浅拷贝
+            BuildTree(leftChild, bounds0, allPrimBounds, prims0, n0, depth - 1, badRefines);
+            currentNode.InitInterior(bestAxis, tsplit);//中序建树
+            BuildTree(rightChild, bounds1, allPrimBounds, prims1, n1, depth - 1, badRefines);
         }
-
-        private bool Intersect(RayInfo ray)
+        /// <summary>
+        /// KDTree中的判交遍历
+        /// </summary>
+        /// <param name="ray"></param>
+        /// <returns></returns>
+        public bool Intersect(RayInfo ray)
         {
-            // Compute initial parametric range of ray inside kd-tree extent
+            // Compute initial parametric range of ray inside kd-tree extent 计算KDtree中的t参数范围
             double tmin = 0.000001;
             double tmax = Double.PositiveInfinity;
             if (!bounds.IntersectP(ray, ref tmin, ref tmax))
@@ -308,22 +334,22 @@ namespace CalculateModelClasses
 
             // Prepare to traverse kd-tree for ray
             SpectVector invDir = new SpectVector(1.0 / ray.RayVector.a, 1.0 / ray.RayVector.b, 1.0 / ray.RayVector.c);
-            List<KdToDo> todo = new List<KdToDo>();
+            List<KdToDo> todo = new List<KdToDo>();//需要处理的节点list
             int todoPos = 0;
 
             // Traverse kd-tree nodes in order for ray
             bool hit = false;
-            KDNode node = nodes[0];
+            KDNode node = rootNode;
             while (node != null)
             {
-                // Bail out if we found a hit closer than the current node
+                // Bail out if we found a hit closer than the current node 如果当前节点的tmin比已找到的交点远，停止判断
                 if (ray.maxt < tmin) break;
                 if (!node.IsLeaf())
                 {
                     // Process kd-tree interior node
 
                     // Compute parametric distance along ray to split plane
-                    int axis = node.SplitAxis();
+                    int axis = node.flag;
                     switch (axis)
                     {
                         case 0:
@@ -338,11 +364,15 @@ namespace CalculateModelClasses
                                 {
                                     //firstChild = node + 1;
                                     //secondChild = &nodes[node->AboveChild()];
+                                    firstChild = node.left;
+                                    secondChild = node.right;
                                 }
                                 else
                                 {
                                     //firstChild = &nodes[node->AboveChild()];
                                     //secondChild = node + 1;
+                                    firstChild = node.right;
+                                    secondChild = node.left;
                                 }
                                 // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
                                 if (tplane > tmax || tplane <= 0)
@@ -372,11 +402,15 @@ namespace CalculateModelClasses
                                 {
                                     //firstChild = node + 1;
                                     //secondChild = &nodes[node->AboveChild()];
+                                    firstChild = node.right;
+                                    secondChild = node.left;
                                 }
                                 else
                                 {
                                     //firstChild = &nodes[node->AboveChild()];
                                     //secondChild = node + 1;
+                                    firstChild = node.right;
+                                    secondChild = node.left;
                                 }
                                 // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
                                 if (tplane > tmax || tplane <= 0)
@@ -406,11 +440,15 @@ namespace CalculateModelClasses
                                 {
                                     //firstChild = node + 1;
                                     //secondChild = &nodes[node->AboveChild()];
+                                    firstChild = node.right;
+                                    secondChild = node.left;
                                 }
                                 else
                                 {
                                     //firstChild = &nodes[node->AboveChild()];
                                     //secondChild = node + 1;
+                                    firstChild = node.right;
+                                    secondChild = node.left;
                                 }
                                 // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
                                 if (tplane > tmax || tplane <= 0)
@@ -434,10 +472,12 @@ namespace CalculateModelClasses
                 else
                 {
                     // Check for intersections inside leaf node
-                    int nPrimitives = node.triangles.Count;
-                    if (nPrimitives == 1)
-                    { 
-                        
+                    int nPrimitives = node.primitiveNumbers.Count;
+                    List<int> primNums = node.primitiveNumbers;
+                    for (int i = 0; i < nPrimitives; i++)
+                    {
+                        Triangle tri = primitives[primNums[i]];
+
                     }
                 }
             }

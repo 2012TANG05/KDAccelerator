@@ -7,9 +7,9 @@ namespace CalculateModelClasses
 {
     public class KDNode
     {
-        public List<Triangle> primitives;//包含三角面
-        //public KDNode left;//左子节点
-        //public KDNode right;//右子节点
+        public List<Triangle> triangles;//包含三角面
+        public KDNode left;//左子节点
+        public KDNode right;//右子节点
         public Bounds3 box;//包围盒
         public double splitPlane;//分割面
         public int flag;//区分基于x,y,z轴划分的内部节点（对应0,1,2）以及叶节点（对应3）
@@ -434,7 +434,7 @@ namespace CalculateModelClasses
                 else
                 {
                     // Check for intersections inside leaf node
-                    int nPrimitives = node.primitives.Count;
+                    int nPrimitives = node.triangles.Count;
                     if (nPrimitives == 1)
                     { 
                         

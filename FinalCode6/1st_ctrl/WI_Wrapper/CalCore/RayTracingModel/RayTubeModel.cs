@@ -228,6 +228,26 @@ namespace RayCalInfo
         }
 
         /// <summary>
+        /// 上文方法的重载，使用了KD树加速结构
+        /// </summary>
+        /// <param name="ter"></param>
+        /// <param name="buildings"></param>
+        /// <param name="kdAccel"></param>
+        public void TracingThisRayTubeModel(Terrain ter, City buildings, KDTreeAccelerator kdAccel)
+        {
+            for (int i = 0; i < this.oneRayModels.Count; i++)
+            {
+                if (!this.oneRayModels[i].HaveTraced)//若该射线还没有追踪，进行追踪
+                {
+                    this.oneRayModels[i].TracingThisRay(ter, buildings, kdAccel);
+                }
+            }
+            this.haveTraced = true;
+            this.UpdataRayTubeCrossFlag();
+
+        }
+
+        /// <summary>
         ///根据射线管每条射线的交点情况判断该射线管是否需要细分
         /// </summary>
         /// <returns></returns>
@@ -2150,6 +2170,42 @@ namespace RayCalInfo
             List<Node> crossNodes = new List<Node>();
             List<Rectangle> shadowRect = ter.lineRect(this.launchRay);//记录射线在俯视图投影经过的矩形
             Node crossWithTer = this.launchRay.GetCrossNodeWithTerrainRects(shadowRect);//记录射线与地形交点、与源点距离、所在面
+            Node crossWithCity = buildings.GetReflectionNodeWithCity(this.launchRay);//记录射线与建筑物交点、与源点距离、所在面
+            //把所有交点放到一个list中
+            if (crossWithTer != null)
+            { crossNodes.Add(crossWithTer); }
+            if (crossWithCity != null)
+            { crossNodes.Add(crossWithCity); }
+            //
+            if (crossNodes.Count == 0)
+            { this.crossNode = null; }
+            else
+            {
+                this.crossNode = crossNodes[0];
+                if (crossNodes.Count > 1)
+                {
+                    //若交点大于两个，找出最近的
+                    for (int i = 1; i < crossNodes.Count; i++)
+                    {
+                        if (this.crossNode.DistanceToFrontNode > crossNodes[i].DistanceToFrontNode)
+                        {
+                            this.crossNode = crossNodes[i];
+                        }
+                    }
+                }
+            }
+            this.haveTraced = true;
+        }
+        /// <summary>
+        /// 上文方法的重载，使用了kd树加速结构
+        /// </summary>
+        /// <param name="ter"></param>
+        /// <param name="buildings"></param>
+        /// <param name="kdAccel"></param>
+        public void TracingThisRay(Terrain ter, City buildings, KDTreeAccelerator kdAccel)
+        {
+            List<Node> crossNodes = new List<Node>();
+            Node crossWithTer = kdAccel.Intersect(this.launchRay);//记录射线与地形交点、与源点距离、所在面
             Node crossWithCity = buildings.GetReflectionNodeWithCity(this.launchRay);//记录射线与建筑物交点、与源点距离、所在面
             //把所有交点放到一个list中
             if (crossWithTer != null)

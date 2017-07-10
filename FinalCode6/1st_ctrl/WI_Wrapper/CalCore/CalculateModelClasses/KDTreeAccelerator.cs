@@ -324,13 +324,13 @@ namespace CalculateModelClasses
         /// </summary>
         /// <param name="ray"></param>
         /// <returns></returns>
-        public bool Intersect(RayInfo ray)
+        public Node Intersect(RayInfo ray)
         {
             // Compute initial parametric range of ray inside kd-tree extent 计算KDtree中的t参数范围
             double tmin = 0.000001;
             double tmax = Double.PositiveInfinity;
             if (!bounds.IntersectP(ray, ref tmin, ref tmax))
-                return false;
+                return null;
 
             // Prepare to traverse kd-tree for ray
             SpectVector invDir = new SpectVector(1.0 / ray.RayVector.a, 1.0 / ray.RayVector.b, 1.0 / ray.RayVector.c);
@@ -338,7 +338,7 @@ namespace CalculateModelClasses
             int todoPos = 0;
 
             // Traverse kd-tree nodes in order for ray
-            bool hit = false;
+            Node finalCrossPoint = null;
             KDNode node = rootNode;
             while (node != null)
             {
@@ -477,10 +477,27 @@ namespace CalculateModelClasses
                     for (int i = 0; i < nPrimitives; i++)
                     {
                         Triangle tri = primitives[primNums[i]];
-
+                        Node crossPoint = ray.GetCrossNodeWithOriginTriangle(tri);
+                        if (crossPoint != null && crossPoint.DistanceToFrontNode < ray.maxt)
+                        { 
+                            ray.maxt = crossPoint.DistanceToFrontNode;
+                            finalCrossPoint = crossPoint;
+                        }
+                           
                     }
-                }
+                    // Grab next node to process from todo list
+                    if (todoPos > 0)
+                    {
+                        --todoPos;
+                        node = todo[todoPos].node;
+                        tmin = todo[todoPos].tmin;
+                        tmax = todo[todoPos].tmax;
+                    }
+                    else
+                        break;
+                }              
             }
+            return finalCrossPoint;
         }
 
 

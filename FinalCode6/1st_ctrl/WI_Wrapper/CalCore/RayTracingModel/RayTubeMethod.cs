@@ -19,10 +19,10 @@ namespace RayCalInfo
             get { return this.receivedPaths; }
         }
 
-        public RayTubeMethod(Node tx, ReceiveBall rxBall, Terrain ter, City buildings, int firstN)
+        public RayTubeMethod(Node tx, ReceiveBall rxBall, Terrain ter, City buildings, KDTreeAccelerator kdAccel, int firstN)
         {
             this.tx = tx;
-            this.receivedPaths = this.GetPunctiformRxPaths(rxBall, ter, buildings, firstN);
+            this.receivedPaths = this.GetPunctiformRxPaths(rxBall, ter, buildings, kdAccel, firstN);
         }
         //态势接收
         public RayTubeMethod(Node tx, ReceiveArea reArea, Terrain ter, City buildings, int firstN)
@@ -187,7 +187,7 @@ namespace RayCalInfo
         ///  <param name="buildings">建筑物</param>
         ///  <param name="firstN">初始细分点个数</param>
         /// <returns></returns>
-        private List<Path> GetPunctiformRxPaths(ReceiveBall rxBall, Terrain ter, City buildings, int firstN)
+        private List<Path> GetPunctiformRxPaths(ReceiveBall rxBall, Terrain ter, City buildings, KDTreeAccelerator kdAccel, int firstN)
         {
             List<Path> receivedPaths = new List<Path>();
             List<RayTubeModel> originalUnits = this.GetOriginUnitsOfIcosahedron();//正二十面体的二十个三角面
@@ -195,7 +195,7 @@ namespace RayCalInfo
             {
                 Console.WriteLine(DateTime.Now);
                 Stack<RayTubeModel> initialModels = this.GetInitialRayTubeModels(this.tx, originalUnits[i], firstN);
-                receivedPaths.AddRange(this.GetPathsFromRayTubeModels(initialModels, ter, rxBall, buildings));
+                receivedPaths.AddRange(this.GetPathsFromRayTubeModels(initialModels, ter, rxBall, buildings, kdAccel));
                 Console.WriteLine(DateTime.Now);
             }
 
@@ -769,7 +769,7 @@ namespace RayCalInfo
         /// <param name="rxBall">接收球</param>
         ///  <param name="buildings">建筑物</param>
         /// <returns></returns>
-        private List<Path> GetPathsFromRayTubeModels(Stack<RayTubeModel> rayTubeModels, Terrain ter, ReceiveBall rxBall, City buildings)
+        private List<Path> GetPathsFromRayTubeModels(Stack<RayTubeModel> rayTubeModels, Terrain ter, ReceiveBall rxBall, City buildings, KDTreeAccelerator kdAccel)
         {
             if (rayTubeModels == null || rayTubeModels.Count == 0)
             {
@@ -788,7 +788,7 @@ namespace RayCalInfo
                     }
                     else//该处理单元还未进行与地形，建筑物的求交计算
                     {
-                        paramModel.TracingThisRayTubeModel(ter, buildings);//射线求交
+                        paramModel.TracingThisRayTubeModel(ter, buildings, kdAccel);//射线求交
                         this.HandleTheRayTubeModel(paramModel, rayTubeModels);
                     }
                     //Console.WriteLine(rayTubeModels.Count);

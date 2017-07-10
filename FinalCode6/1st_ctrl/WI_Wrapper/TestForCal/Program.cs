@@ -15,10 +15,10 @@ namespace TestForCal
     {
         static void Main(string[] args)
         {
-            string setuppath = ".\\.\\project\\txh170508\\txh170508.setup";
-            string terpath = ".\\.\\project\\txh170508\\txh170508.ter";
-            string txpath = ".\\.\\project\\txh170508\\txh170508.tx";
-            string rxpath = ".\\.\\project\\txh170508\\txh170508.rx";
+            string setuppath = ".\\.\\project\\txh170710\\txh170710.setup";
+            string terpath = ".\\.\\project\\txh170710\\txh170710.ter";
+            string txpath = ".\\.\\project\\txh170710\\txh170710.tx";
+            string rxpath = ".\\.\\project\\txh170710\\txh170710.rx";
 
             RayTracingProceed.RayTracingProceed.Calculate(setuppath, terpath, txpath, rxpath);
 

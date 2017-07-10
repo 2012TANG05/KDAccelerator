@@ -98,7 +98,7 @@ namespace CalculateModelClasses
         /// <param name="emptyBonus">两区域其一为空时，附加值参数，介于0到1之间</param>
         /// <param name="maxPrims">单个节点允许的最大三角面数量</param>
         /// <param name="maxDepth">允许的最大树深度</param>
-        public KDTreeAccelerator(List<Triangle> primitives, int isectCost = 80, int traversalCost = 1, 
+        public KDTreeAccelerator(List<Triangle> primitives, int isectCost = 80, int traversalCost = 1,
             double emptyBonus = 0.5, int maxPrims = 1, int maxDepth = -1)
         {
             this.isectCost = isectCost;
@@ -110,10 +110,11 @@ namespace CalculateModelClasses
 
             //Build kd-Tree for accelerator
             if (maxDepth <= 0)
-                maxDepth = (int)Math.Round(8 + 1.3 * (Math.Log(primitives.Count) / Math.Log(2)),0);
+                maxDepth = (int)Math.Round(8 + 1.3 * (Math.Log(primitives.Count) / Math.Log(2)), 0);
 
             //Compute bounds for kd-tree construction 计算根节点的包围盒
             List<Bounds3> primBounds = new List<Bounds3>();
+            bounds = primitives[0].WorldBound();
             for (int i = 0; i < primitives.Count; i++)
             {
                 Bounds3 tempBound = primitives[i].WorldBound();
@@ -141,7 +142,7 @@ namespace CalculateModelClasses
         /// <param name="nPrimitives">当前节点所包含的面元数量</param>
         /// <param name="depth">当前节点深度</param>
         /// <param name="badRefines">到当前节点为止的非优划分次数</param>
-        private void BuildTree(KDNode currentNode, Bounds3 nodeBounds, List<Bounds3> allPrimBounds, 
+        private void BuildTree(KDNode currentNode, Bounds3 nodeBounds, List<Bounds3> allPrimBounds,
             int[] primNums, int nPrimitives, int depth, int badRefines)
         {
             // Initialize leaf node if termination criteria met
@@ -152,15 +153,24 @@ namespace CalculateModelClasses
             }
             // Allocate working memory for kd-tree construction C#中这一步已简化
             List<List<BoundEdge>> edges = new List<List<BoundEdge>>();
+            for (int i = 0; i < 3; i++)
+            {
+                List<BoundEdge> edge = new List<BoundEdge>();
+                for (int j = 0; j < 2 * nPrimitives; j++)
+                {
+                    edge.Add(new BoundEdge());
+                }
+                edges.Add(edge);
+            }
             int[] prims0 = new int[primitives.Count];
             int[] prims1 = new int[primitives.Count];
 
-        // Initialize interior node and continue recursion 初始化内部节点并递归创建
+            // Initialize interior node and continue recursion 初始化内部节点并递归创建
 
             // Choose split axis position for interior node 为内部节点选择分割轴位置
             int bestAxis = -1, bestOffset = -1;
             double bestCost = Double.PositiveInfinity;
-            double oldCost = isectCost*(double)(nPrimitives);//与所有面判交成本
+            double oldCost = isectCost * (double)(nPrimitives);//与所有面判交成本
             double totalSA = nodeBounds.SurfaceArea();//当前包围盒表面积
             double invTotalSA = 1.0 / totalSA;
             SpectVector d = new SpectVector(nodeBounds.pMin, nodeBounds.pMax);
@@ -197,14 +207,13 @@ namespace CalculateModelClasses
                 }
                 else
                     throw new Exception { };
-            }
-            bes.Sort();//对包围盒在轴线的投影进行排序
+            }         
+            Sort(bes);//对包围盒在轴线的投影进行排序
             for (int i = 0; i < nPrimitives; i++)
             {
-                edges[axis][2 * i] = bes[i];
+                edges[axis][2 * i] = bes[2 * i];
                 edges[axis][2 * i + 1] = bes[2 * i + 1];
             }
-
             // Compute cost of all splits for _axis_ to find best
             int nBelow = 0, nAbove = nPrimitives;
             for (int i = 0; i < 2 * nPrimitives; i++)
@@ -278,6 +287,7 @@ namespace CalculateModelClasses
                 }
                 if (edges[axis][i].type == BoundEdge.EdgeType.Start) ++nBelow;
             }
+
             if (!(nBelow == nPrimitives && nAbove == 0))
                 throw new Exception { };
             // Create leaf if no good splits were found 如果分割面不理想，创建叶节点
@@ -298,7 +308,7 @@ namespace CalculateModelClasses
                     prims0[n0++] = edges[bestAxis][i].primNum;
             for (int i = bestOffset + 1; i < 2 * nPrimitives; ++i)
                 if (edges[bestAxis][i].type == BoundEdge.EdgeType.End)
-                    prims1[nPrimitives*(this.maxDepth-depth)+(n1++)] = edges[bestAxis][i].primNum;
+                    prims1[n1++] = edges[bestAxis][i].primNum;
 
             // Recursively initialize children nodes 递归创建子节点
             double tsplit = edges[bestAxis][bestOffset].t;
@@ -479,11 +489,11 @@ namespace CalculateModelClasses
                         Triangle tri = primitives[primNums[i]];
                         Node crossPoint = ray.GetCrossNodeWithOriginTriangle(tri);
                         if (crossPoint != null && crossPoint.DistanceToFrontNode < ray.maxt)
-                        { 
+                        {
                             ray.maxt = crossPoint.DistanceToFrontNode;
                             finalCrossPoint = crossPoint;
                         }
-                           
+
                     }
                     // Grab next node to process from todo list
                     if (todoPos > 0)
@@ -495,18 +505,39 @@ namespace CalculateModelClasses
                     }
                     else
                         break;
-                }              
+                }
             }
             return finalCrossPoint;
         }
 
-
+        /// <summary>
+        /// 快速排序BoundEdge结构体
+        /// </summary>
+        /// <param name="be">待排序的结构体</param>
+        /// <param name="low">起始下标</param>
+        /// <param name="high">结束下标</param>
+        private static void Sort(List<BoundEdge> be)
+        {
+            //先使用冒泡排序，确保能跑通，之后再改快排
+            for (int i = 0; i < be.Count; i++)
+            {
+                for (int j = 0; j < be.Count - 1 - i; j++)
+                {
+                    if (be[j] > be[j + 1])
+                    {
+                        BoundEdge temp = be[j];
+                        be[j] = be[j + 1];
+                        be[j + 1] = temp;
+                    }
+                }
+            }
+        }
     }
 
     public class Bounds3
     {
-        public Point pMin=new Point();
-        public Point pMax=new Point();
+        public Point pMin = new Point();
+        public Point pMax = new Point();
 
         public Bounds3()
         {
@@ -574,7 +605,7 @@ namespace CalculateModelClasses
         public double SurfaceArea()
         {
             return 2 * ((this.pMax.X - this.pMin.X) * (this.pMax.Y - this.pMin.Y) +
-                (this.pMax.X - this.pMin.X) * (this.pMax.Z - this.pMin.Z) + 
+                (this.pMax.X - this.pMin.X) * (this.pMax.Z - this.pMin.Z) +
                 (this.pMax.Y - this.pMin.Y) * (this.pMax.Z - this.pMin.Z));
         }
 
@@ -619,7 +650,7 @@ namespace CalculateModelClasses
                             t0 = tNear > t0 ? tNear : t0;
                             t1 = tFar < t1 ? tFar : t1;
                             if (t0 > t1) return false;
-                        }break;
+                        } break;
                     case 1:
                         {
                             double invDir = 1.0 / ray.RayVector.b;
@@ -635,7 +666,7 @@ namespace CalculateModelClasses
                             t0 = tNear > t0 ? tNear : t0;
                             t1 = tFar < t1 ? tFar : t1;
                             if (t0 > t1) return false;
-                        }break;
+                        } break;
                     case 2:
                         {
                             double invDir = 1.0 / ray.RayVector.c;
@@ -651,10 +682,10 @@ namespace CalculateModelClasses
                             t0 = tNear > t0 ? tNear : t0;
                             t1 = tFar < t1 ? tFar : t1;
                             if (t0 > t1) return false;
-                        }break;
+                        } break;
                     default:
-                        throw new Exception { };                     
-                }                
+                        throw new Exception { };
+                }
             }
             if (hitt0 != Double.NaN) hitt0 = t0;
             if (hitt1 != Double.NaN) hitt1 = t1;
@@ -668,5 +699,5 @@ namespace CalculateModelClasses
         public double tmin, tmax;
     }
 
-    
+
 }

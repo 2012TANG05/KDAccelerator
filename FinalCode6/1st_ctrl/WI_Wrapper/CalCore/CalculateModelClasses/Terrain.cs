@@ -13,11 +13,11 @@ namespace CalculateModelClasses
     public class Terrain
     {
         List<Material> materialList;
-        //public const double UnitX = 70.54011649840004;
-        //public const double UnitY = 92.76178115039988;
+        public const double UnitX = 70.54011649840004;
+        public const double UnitY = 92.76178115039988;
 
-        public const double UnitX = 50;
-        public const double UnitY = 50;
+        //public const double UnitX = 50;
+        //public const double UnitY = 50;
         public Rectangle[,] TerRect;
         public double MinX;
         public double MinY;

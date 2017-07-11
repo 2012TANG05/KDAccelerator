@@ -41,7 +41,7 @@ namespace RayTracingProceed
             { newTer.OutPutNewTerrain(GetDirectory(setuppath)); }//输出新地形
             int?[] index={null,null};
             int txindex = 0;
-            KDTreeAccelerator kdAccel = new KDTreeAccelerator(newTer.terTris, 80, 1, 0.5, 1, -1);
+            KDTreeAccelerator kdAccel = new KDTreeAccelerator(newTer.terTris, 80, 1, 0.0, 1, -1);
             for (int i = 0; i < txs.Count; i++)
             {
                 List<FrequencyBand> txFrequencyBand = TxFileProceed.GetTxFrequenceBand(txpath, setuppath, i);//获取频段信息

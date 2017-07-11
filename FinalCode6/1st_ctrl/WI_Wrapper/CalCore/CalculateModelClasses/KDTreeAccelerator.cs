@@ -99,7 +99,7 @@ namespace CalculateModelClasses
         /// <param name="maxPrims">单个节点允许的最大三角面数量</param>
         /// <param name="maxDepth">允许的最大树深度</param>
         public KDTreeAccelerator(List<Triangle> primitives, int isectCost = 80, int traversalCost = 1,
-            double emptyBonus = 0.5, int maxPrims = 1, int maxDepth = -1)
+            double emptyBonus = 0.0, int maxPrims = 1, int maxDepth = -1)
         {
             this.isectCost = isectCost;
             this.traversalCost = traversalCost;
@@ -109,8 +109,8 @@ namespace CalculateModelClasses
             this.maxDepth = maxDepth;
 
             //Build kd-Tree for accelerator
-            if (maxDepth <= 0)
-                maxDepth = (int)Math.Round(8 + 1.3 * (Math.Log(primitives.Count) / Math.Log(2)), 0);
+            if (this.maxDepth <= 0)
+                this.maxDepth = (int)Math.Round(8 + 1.3 * (Math.Log(primitives.Count) / Math.Log(2)), 0);
 
             //Compute bounds for kd-tree construction 计算根节点的包围盒
             List<Bounds3> primBounds = new List<Bounds3>();
@@ -130,7 +130,7 @@ namespace CalculateModelClasses
             }
 
             // Start recursive construction of kd-tree 开始递归建树
-            BuildTree(rootNode, bounds, primBounds, primNums, primitives.Count, maxDepth, 0);
+            BuildTree(rootNode, bounds, primBounds, primNums, primitives.Count, this.maxDepth, 0);
         }
         /// <summary>
         /// 创建节点
@@ -145,8 +145,9 @@ namespace CalculateModelClasses
         private void BuildTree(KDNode currentNode, Bounds3 nodeBounds, List<Bounds3> allPrimBounds,
             int[] primNums, int nPrimitives, int depth, int badRefines)
         {
+            Console.WriteLine("正在构建第{0}层树", this.maxDepth - depth);
             // Initialize leaf node if termination criteria met
-            if (nPrimitives <= maxPrims || depth == 0)
+            if (nPrimitives <= this.maxPrims || depth == 0)
             {
                 currentNode.InitLeaf(primNums, nPrimitives);
                 return;
@@ -207,7 +208,7 @@ namespace CalculateModelClasses
                 }
                 else
                     throw new Exception { };
-            }         
+            }
             Sort(bes);//对包围盒在轴线的投影进行排序
             for (int i = 0; i < nPrimitives; i++)
             {
@@ -233,7 +234,7 @@ namespace CalculateModelClasses
                             double pBelow = belowSA * invTotalSA;//射线穿过下包围盒的概率
                             double pAbove = aboveSA * invTotalSA;//射线穿过上包围盒的概率
                             double eb = (nAbove == 0 || nBelow == 0) ? emptyBonus : 0.0;//分割面为包围盒的一个面时，修正系数
-                            double cost = traversalCost + isectCost * (1.0 - eb) * (pBelow * nBelow + pAbove * nAbove);//计算开销
+                            double cost = traversalCost + isectCost * (pBelow * nBelow + pAbove * nAbove);//计算开销
                             // Update best split if this is lowest cost so far
                             if (cost < bestCost)
                             {
@@ -253,7 +254,7 @@ namespace CalculateModelClasses
                             double pBelow = belowSA * invTotalSA;//射线穿过下包围盒的概率
                             double pAbove = aboveSA * invTotalSA;//射线穿过上包围盒的概率
                             double eb = (nAbove == 0 || nBelow == 0) ? emptyBonus : 0.0;//分割面为包围盒的一个面时，修正系数
-                            double cost = traversalCost + isectCost * (1.0 - eb) * (pBelow * nBelow + pAbove * nAbove);//计算开销
+                            double cost = traversalCost + isectCost * (pBelow * nBelow + pAbove * nAbove);//计算开销
                             // Update best split if this is lowest cost so far
                             if (cost < bestCost)
                             {
@@ -273,7 +274,7 @@ namespace CalculateModelClasses
                             double pBelow = belowSA * invTotalSA;//射线穿过下包围盒的概率
                             double pAbove = aboveSA * invTotalSA;//射线穿过上包围盒的概率
                             double eb = (nAbove == 0 || nBelow == 0) ? emptyBonus : 0.0;//分割面为包围盒的一个面时，修正系数
-                            double cost = traversalCost + isectCost * (1.0 - eb) * (pBelow * nBelow + pAbove * nAbove);//计算开销
+                            double cost = traversalCost + isectCost * (pBelow * nBelow + pAbove * nAbove);//计算开销
                             // Update best split if this is lowest cost so far
                             if (cost < bestCost)
                             {
@@ -312,12 +313,13 @@ namespace CalculateModelClasses
 
             // Recursively initialize children nodes 递归创建子节点
             double tsplit = edges[bestAxis][bestOffset].t;
-            Bounds3 bounds0 = nodeBounds, bounds1 = nodeBounds;
+            Bounds3 bounds0 = new Bounds3(nodeBounds.pMin, nodeBounds.pMax);
+            Bounds3 bounds1 = new Bounds3(nodeBounds.pMin, nodeBounds.pMax);//一定要深拷贝，直接bound0=nodeBounds会因为浅拷贝而出错
             switch (axis)
             {
-                case 0: bounds0.pMax.X = bounds1.pMin.X = tsplit; break;
-                case 1: bounds0.pMax.Y = bounds1.pMin.Y = tsplit; break;
-                case 2: bounds0.pMax.Z = bounds1.pMin.Z = tsplit; break;
+                case 0: bounds0.pMax.X = tsplit; bounds1.pMin.X = tsplit; break;
+                case 1: bounds0.pMax.Y = tsplit; bounds1.pMin.Y = tsplit; break;
+                case 2: bounds0.pMax.Z = tsplit; bounds1.pMin.Z = tsplit; break;
                 default: throw new Exception { };
             }
             //递归创建子节点
@@ -628,8 +630,8 @@ namespace CalculateModelClasses
 
         public bool IntersectP(RayInfo ray, ref double hitt0, ref double hitt1)
         {
-            double t0 = 0.000001;
-            double t1 = Double.PositiveInfinity;
+            double t0 = ray.mint;
+            double t1 = ray.maxt;
             for (int i = 0; i < 3; i++)
             {
                 // Update interval for _i_th bounding box slab 更新三组包围盒平行板间距
@@ -638,8 +640,8 @@ namespace CalculateModelClasses
                     case 0:
                         {
                             double invDir = 1.0 / ray.RayVector.a;
-                            double tNear = (pMin.X - ray.Origin.X) * invDir;
-                            double tFar = (pMax.X - ray.Origin.X) * invDir;
+                            double tNear = (this.pMin.X - ray.Origin.X) * invDir;
+                            double tFar = (this.pMax.X - ray.Origin.X) * invDir;
                             // Update parametric interval from slab intersection $t$s
                             if (tNear > tFar)
                             {
@@ -654,8 +656,8 @@ namespace CalculateModelClasses
                     case 1:
                         {
                             double invDir = 1.0 / ray.RayVector.b;
-                            double tNear = (pMin.Y - ray.Origin.Y) * invDir;
-                            double tFar = (pMax.Y - ray.Origin.Y) * invDir;
+                            double tNear = (this.pMin.Y - ray.Origin.Y) * invDir;
+                            double tFar = (this.pMax.Y - ray.Origin.Y) * invDir;
                             // Update parametric interval from slab intersection $t$s
                             if (tNear > tFar)
                             {
@@ -670,8 +672,8 @@ namespace CalculateModelClasses
                     case 2:
                         {
                             double invDir = 1.0 / ray.RayVector.c;
-                            double tNear = (pMin.Z - ray.Origin.Z) * invDir;
-                            double tFar = (pMax.Z - ray.Origin.Z) * invDir;
+                            double tNear = (this.pMin.Z - ray.Origin.Z) * invDir;
+                            double tFar = (this.pMax.Z - ray.Origin.Z) * invDir;
                             // Update parametric interval from slab intersection $t$s
                             if (tNear > tFar)
                             {

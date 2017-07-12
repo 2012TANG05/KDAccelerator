@@ -5,7 +5,7 @@ using System.Text;
 
 namespace CalculateModelClasses
 {
-    public class KDNode
+    public class KDNode : ICloneable
     {
         public KDNode left;//左子节点
         public KDNode right;//右子节点
@@ -46,6 +46,22 @@ namespace CalculateModelClasses
         public bool IsLeaf()
         {
             return flag == 3 ? true : false;
+        }
+
+        /// <summary>
+        /// 拷贝节点对象，对象中的KDNode类型的子节点使用浅拷贝即可（深拷贝会陷入循环）
+        /// </summary>
+        /// <returns></returns>
+        public object Clone()
+        {
+            KDNode newKDNode = new KDNode();          
+            newKDNode.left = this.left;
+            newKDNode.right = this.right;
+            newKDNode.box = this.box;
+            newKDNode.splitPlane = this.splitPlane;
+            newKDNode.flag = this.flag;
+            newKDNode.primitiveNumbers = this.primitiveNumbers;
+            return newKDNode;
         }
     }
 
@@ -338,21 +354,25 @@ namespace CalculateModelClasses
         /// <returns></returns>
         public Node Intersect(RayInfo ray)
         {
-            // Compute initial parametric range of ray inside kd-tree extent 计算KDtree中的t参数范围
+            // Compute initial parametric range of ray inside kd-tree extent 计算KDtree中t的初始参数范围
             double tmin = 0.000001;
             double tmax = Double.PositiveInfinity;
             if (!bounds.IntersectP(ray, ref tmin, ref tmax))
                 return null;
 
             // Prepare to traverse kd-tree for ray
-            SpectVector invDir = new SpectVector(1.0 / ray.RayVector.a, 1.0 / ray.RayVector.b, 1.0 / ray.RayVector.c);
-            List<KdToDo> todo = new List<KdToDo>();//需要处理的节点list
+            SpectVector invDir = new SpectVector(ray.RayVector.Mag() / ray.RayVector.a, ray.RayVector.Mag() / ray.RayVector.b, ray.RayVector.Mag() / ray.RayVector.c);
+            List<KdToDo> todo = new List<KdToDo>();//需要处理的节点list 给一个足够大的初始化值64
+            for (int i = 0; i < 64; i++)
+            {
+                todo.Add(new KdToDo());
+            }
             int todoPos = 0;
 
             // Traverse kd-tree nodes in order for ray
             Node finalCrossPoint = null;
-            KDNode node = rootNode;
-            while (node != null)
+            KDNode node = (KDNode)rootNode.Clone();//需要深拷贝
+            while (node.flag != -1)
             {
                 // Bail out if we found a hit closer than the current node 如果当前节点的tmin比已找到的交点远，停止判断
                 if (ray.maxt < tmin) break;
@@ -376,29 +396,29 @@ namespace CalculateModelClasses
                                 {
                                     //firstChild = node + 1;
                                     //secondChild = &nodes[node->AboveChild()];
-                                    firstChild = node.left;
-                                    secondChild = node.right;
+                                    firstChild = (KDNode)node.left.Clone();
+                                    secondChild = (KDNode)node.right.Clone();
                                 }
                                 else
                                 {
                                     //firstChild = &nodes[node->AboveChild()];
                                     //secondChild = node + 1;
-                                    firstChild = node.right;
-                                    secondChild = node.left;
+                                    firstChild = (KDNode)node.right.Clone();
+                                    secondChild = (KDNode)node.left.Clone();
                                 }
                                 // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
                                 if (tplane > tmax || tplane <= 0)
-                                    node = firstChild;
+                                    node = (KDNode)firstChild.Clone();
                                 else if (tplane < tmin)
-                                    node = secondChild;
+                                    node = (KDNode)secondChild.Clone();
                                 else
                                 {
                                     // Enqueue _secondChild_ in todo list
-                                    todo[todoPos].node = secondChild;
+                                    todo[todoPos].node = (KDNode)secondChild.Clone();
                                     todo[todoPos].tmin = tplane;
                                     todo[todoPos].tmax = tmax;
                                     ++todoPos;
-                                    node = firstChild;
+                                    node = (KDNode)firstChild.Clone();
                                     tmax = tplane;
                                 }
                             } break;
@@ -414,29 +434,29 @@ namespace CalculateModelClasses
                                 {
                                     //firstChild = node + 1;
                                     //secondChild = &nodes[node->AboveChild()];
-                                    firstChild = node.right;
-                                    secondChild = node.left;
+                                    firstChild = (KDNode)node.left.Clone();
+                                    secondChild = (KDNode)node.right.Clone();
                                 }
                                 else
                                 {
                                     //firstChild = &nodes[node->AboveChild()];
                                     //secondChild = node + 1;
-                                    firstChild = node.right;
-                                    secondChild = node.left;
+                                    firstChild = (KDNode)node.right.Clone();
+                                    secondChild = (KDNode)node.left.Clone();
                                 }
                                 // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
                                 if (tplane > tmax || tplane <= 0)
-                                    node = firstChild;
+                                    node = (KDNode)firstChild.Clone();
                                 else if (tplane < tmin)
-                                    node = secondChild;
+                                    node = (KDNode)secondChild.Clone();
                                 else
                                 {
                                     // Enqueue _secondChild_ in todo list
-                                    todo[todoPos].node = secondChild;
+                                    todo[todoPos].node = (KDNode)secondChild.Clone();
                                     todo[todoPos].tmin = tplane;
                                     todo[todoPos].tmax = tmax;
                                     ++todoPos;
-                                    node = firstChild;
+                                    node = (KDNode)firstChild.Clone();
                                     tmax = tplane;
                                 }
                             } break;
@@ -452,29 +472,29 @@ namespace CalculateModelClasses
                                 {
                                     //firstChild = node + 1;
                                     //secondChild = &nodes[node->AboveChild()];
-                                    firstChild = node.right;
-                                    secondChild = node.left;
+                                    firstChild = (KDNode)node.left.Clone();
+                                    secondChild = (KDNode)node.right.Clone();
                                 }
                                 else
                                 {
                                     //firstChild = &nodes[node->AboveChild()];
                                     //secondChild = node + 1;
-                                    firstChild = node.right;
-                                    secondChild = node.left;
+                                    firstChild = (KDNode)node.right.Clone();
+                                    secondChild = (KDNode)node.left.Clone();
                                 }
                                 // Advance to next child node, possibly enqueue other child 有一些无需处理本节点的全部两个子节点的情况
                                 if (tplane > tmax || tplane <= 0)
-                                    node = firstChild;
+                                    node = (KDNode)firstChild.Clone();
                                 else if (tplane < tmin)
-                                    node = secondChild;
+                                    node = (KDNode)secondChild.Clone();
                                 else
                                 {
                                     // Enqueue _secondChild_ in todo list
-                                    todo[todoPos].node = secondChild;
+                                    todo[todoPos].node = (KDNode)secondChild.Clone();
                                     todo[todoPos].tmin = tplane;
                                     todo[todoPos].tmax = tmax;
                                     ++todoPos;
-                                    node = firstChild;
+                                    node = (KDNode)firstChild.Clone();
                                     tmax = tplane;
                                 }
                             } break;
@@ -501,7 +521,7 @@ namespace CalculateModelClasses
                     if (todoPos > 0)
                     {
                         --todoPos;
-                        node = todo[todoPos].node;
+                        node = (KDNode)todo[todoPos].node.Clone();
                         tmin = todo[todoPos].tmin;
                         tmax = todo[todoPos].tmax;
                     }
@@ -628,6 +648,13 @@ namespace CalculateModelClasses
                 return 2;
         }
 
+        /// <summary>
+        /// 计算射线与包围盒（三组平行板）的交点范围
+        /// </summary>
+        /// <param name="ray"></param>
+        /// <param name="hitt0"></param>
+        /// <param name="hitt1"></param>
+        /// <returns></returns>
         public bool IntersectP(RayInfo ray, ref double hitt0, ref double hitt1)
         {
             double t0 = ray.mint;
@@ -639,7 +666,7 @@ namespace CalculateModelClasses
                 {
                     case 0:
                         {
-                            double invDir = 1.0 / ray.RayVector.a;
+                            double invDir = ray.RayVector.Mag() / ray.RayVector.a;
                             double tNear = (this.pMin.X - ray.Origin.X) * invDir;
                             double tFar = (this.pMax.X - ray.Origin.X) * invDir;
                             // Update parametric interval from slab intersection $t$s
@@ -655,7 +682,7 @@ namespace CalculateModelClasses
                         } break;
                     case 1:
                         {
-                            double invDir = 1.0 / ray.RayVector.b;
+                            double invDir = ray.RayVector.Mag() / ray.RayVector.b;
                             double tNear = (this.pMin.Y - ray.Origin.Y) * invDir;
                             double tFar = (this.pMax.Y - ray.Origin.Y) * invDir;
                             // Update parametric interval from slab intersection $t$s
@@ -671,7 +698,7 @@ namespace CalculateModelClasses
                         } break;
                     case 2:
                         {
-                            double invDir = 1.0 / ray.RayVector.c;
+                            double invDir = ray.RayVector.Mag() / ray.RayVector.c;
                             double tNear = (this.pMin.Z - ray.Origin.Z) * invDir;
                             double tFar = (this.pMax.Z - ray.Origin.Z) * invDir;
                             // Update parametric interval from slab intersection $t$s

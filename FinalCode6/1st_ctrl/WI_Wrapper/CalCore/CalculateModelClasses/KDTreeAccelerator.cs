@@ -9,7 +9,6 @@ namespace CalculateModelClasses
     {
         public KDNode left;//左子节点
         public KDNode right;//右子节点
-        public Bounds3 box;//包围盒
         public double splitPlane;//分割面坐标
         public int flag;//区分基于x,y,z轴划分的内部节点（对应0,1,2）以及叶节点（对应3）
         public List<int> primitiveNumbers = new List<int>();//包含的三角面的对应编号
@@ -57,7 +56,6 @@ namespace CalculateModelClasses
             KDNode newKDNode = new KDNode();          
             newKDNode.left = this.left;
             newKDNode.right = this.right;
-            newKDNode.box = this.box;
             newKDNode.splitPlane = this.splitPlane;
             newKDNode.flag = this.flag;
             newKDNode.primitiveNumbers = this.primitiveNumbers;
